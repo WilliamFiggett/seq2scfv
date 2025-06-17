@@ -53,10 +53,10 @@ RUN wget --no-check-certificate https://ftp.ncbi.nih.gov/blast/executables/igbla
     rm ncbi-igblast-${VERSION_IGBLAST}-x64-linux.tar.gz
 
 COPY install2.r /usr/bin/install2.r
-
+RUN chmod +x /usr/bin/install2.r
 
 RUN mkdir /home/seq2scfv
-RUN git clone https://github.com/ngs-ai-org/seq2scfv.git /home/seq2scfv
+RUN git clone https://github.com/WilliamFiggett/seq2scfv.git /home/seq2scfv
 RUN cp /home/seq2scfv/bin/* /usr/local/bin/
 RUN chmod +x /usr/local/bin/*
 
