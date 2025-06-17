@@ -63,13 +63,20 @@ RUN chmod +x /usr/local/bin/*
 RUN mkdir /home/R
 ENV R_LIBS_USER="/home/R"
 
+# Install core libraries first to cache this layer
 RUN /usr/bin/install2.r --libloc /home/R --error --repos "https://stat.ethz.ch/CRAN/" \
-data.table \
-    reshape2 \ 
+    data.table \
+    reshape2 \
     dplyr \
     tidyr \
+    stringr
+
+# Install gtable version 0.3.5 from the archive
+RUN Rscript -e "install.packages('https://cran.r-project.org/src/contrib/Archive/gtable/gtable_0.3.5.tar.gz', repos = NULL, type = 'source')"
+
+# Install ggplot2 and gridExtra separately to prevent conflicts
+RUN /usr/bin/install2.r --libloc /home/R --error --repos "https://stat.ethz.ch/CRAN/" \
     ggplot2 \
-    gridExtra \
-    stringr 
+    gridExtra
 
 CMD ["/bin/bash"]
