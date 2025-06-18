@@ -14,8 +14,8 @@ ARG DEBIAN_FRONTEND=noninteractive
 # version numbers
 ARG VERSION_SEQKIT="2.3.1"
 ARG VERSION_IGBLAST="1.20.0"
-ARG VERSION_PANDAS="2.2.2"
-ARG VERSION_BIOPYTHON="1.84"
+#ARG VERSION_PANDAS="2.2.2"
+#ARG VERSION_BIOPYTHON="1.84"
 ARG VERSION_CLUSTALO="1.2.4"
 ARG VERSION_BIOAWK="1.0"
 
@@ -32,8 +32,7 @@ RUN conda config --add channels bioconda
 RUN conda config --add channels conda-forge
 
 # install python packages
-RUN conda install -y pandas=${VERSION_PANDAS} \
-                     biopython=${VERSION_BIOPYTHON} 
+RUN conda install -y pandas biopython
 
 # conda installation of other tools
 RUN conda install -y -c bioconda seqkit=${VERSION_SEQKIT} \
