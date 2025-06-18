@@ -1,5 +1,9 @@
 # building in ubuntu 20.04
-FROM ubuntu@sha256:b795f8e0caaaacad9859a9a38fe1c78154f8301fdaf0872eaf1520d66d9c0b98 AS builder
+#FROM ubuntu@sha256:b795f8e0caaaacad9859a9a38fe1c78154f8301fdaf0872eaf1520d66d9c0b98 AS builder
+
+# Updated base image:
+FROM rocker/tidyverse:latest
+
 SHELL ["/bin/bash", "-c"]
 
 ENV CONTAINER_NAME="NGS-AI Seq2scFv"
@@ -55,27 +59,21 @@ COPY install2.r /usr/bin/install2.r
 RUN chmod +x /usr/bin/install2.r
 
 RUN mkdir /home/seq2scfv
-RUN git clone https://github.com/WilliamFiggett/seq2scfv.git /home/seq2scfv
+RUN git clone https://github.com/ngs-ai-org/seq2scfv.git /home/seq2scfv
 RUN cp /home/seq2scfv/bin/* /usr/local/bin/
 RUN chmod +x /usr/local/bin/*
 
 RUN mkdir /home/R
 ENV R_LIBS_USER="/home/R"
 
-# Install core libraries first to cache this layer
-RUN /usr/bin/install2.r --libloc /home/R --error --repos "https://stat.ethz.ch/CRAN/" \
+# Install R packages
+RUN install2.r --error \
     data.table \
     reshape2 \
     dplyr \
     tidyr \
-    stringr
-
-# Install gtable version 0.3.5 from the archive
-RUN Rscript -e "install.packages('https://cran.r-project.org/src/contrib/Archive/gtable/gtable_0.3.5.tar.gz', repos = NULL, type = 'source')"
-
-# Install ggplot2 and gridExtra separately to prevent conflicts
-RUN /usr/bin/install2.r --libloc /home/R --error --repos "https://stat.ethz.ch/CRAN/" \
     ggplot2 \
-    gridExtra
+    gridExtra \
+    stringr
 
 CMD ["/bin/bash"]
