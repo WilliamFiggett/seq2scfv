@@ -26,7 +26,7 @@ RUN apt-get update -y && apt-get install -y unzip wget perl python3 make build-e
 RUN echo "Install Bioconda"
 RUN wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda3.sh
 RUN bash miniconda3.sh -b -u -p /usr/miniconda
-ENV export PATH="/usr/miniconda/bin:$PATH"
+ENV PATH="/usr/miniconda/bin:$PATH"
 RUN conda config --add channels defaults
 RUN conda config --add channels bioconda
 RUN conda config --add channels conda-forge
