@@ -104,7 +104,7 @@ def igtable(input):
     """
     blast = pd.read_csv(input, sep='\t', header=0)
     blast['sequence'] = blast['sequence'].astype(str)
-    if not blast["sequence_id"].str.contains('\|').any():
+    if not blast["sequence_id"].str.contains(r'\|').any():
         blast["sequence_id"] = blast.apply(lambda row: row["sequence_id"] + "|0:" + str(len(row["sequence"])), axis=1)
         blast["origin"] = "uncut"
     return blast
