@@ -122,7 +122,7 @@ def blastfilt(blast, escore, output2):
     Returns:
         pd.DataFrame: Filtered IgBLAST output.
     """
-    filtered_blast = blast[(blast["v_support"] < float(escore)) & (blast["j_support"] < float(escore))]
+    filtered_blast = blast[(blast["v_support"] < float(escore)) & (blast["j_support"] < float(escore))].copy()
     filtered_blast["short"] = filtered_blast["sequence_id"].str.split('|').str[0]
     filtered_blast["coord"] = filtered_blast["sequence_id"].str.split('|').str[1].str.split(':').str[0]
     filtered_blast.reset_index(drop=True, inplace=True)
@@ -133,7 +133,7 @@ def scan5p(filtered_blast, minlen):
     """
     Scan the 5' end for sufficient sequence length. Returns sequences meeting length requirement on 5' end.
     """
-    seq5p = filtered_blast[filtered_blast["v_sequence_start"] > int(minlen)]
+    seq5p = filtered_blast[filtered_blast["v_sequence_start"] > int(minlen)].copy()
     if not seq5p.empty: 
         seq5p["sequence_id"] = seq5p.apply(lambda row: row["short"] + "|" + str(row["coord"]) + ":" + str(round(row["v_sequence_start"])), axis=1)  
         seq5p["sequence"] = seq5p.apply(lambda row: row["sequence"][:int(row["v_sequence_start"])], axis=1)
@@ -145,7 +145,7 @@ def scan3p(filtered_blast, minlen):
     """
     Scan the 3' end for sufficient sequence length. Returns sequences meeting length requirement on 3' end.
     """
-    seq3p = filtered_blast[(filtered_blast["sequence"].str.len() - filtered_blast["j_sequence_end"]) > int(minlen)]
+    seq3p = filtered_blast[(filtered_blast["sequence"].str.len() - filtered_blast["j_sequence_end"]) > int(minlen)].copy()
     if not seq3p.empty: 
         seq3p["sequence_id"] = seq3p.apply(lambda row: row["short"] + "|" + str(round(int(row["j_sequence_end"]) + int(row["coord"]))) + ":" + str(len(row["sequence"])+ int(row["coord"])), axis=1)
         seq3p["sequence"] = seq3p.apply(lambda row: row["sequence"][(int(row["j_sequence_end"])-1):], axis=1)
