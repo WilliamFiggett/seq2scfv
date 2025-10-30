@@ -5,7 +5,6 @@ This script performs iterative IgBLAST analysis on DNA sequences.
 It splits sequences based on V, D, and J gene alignments to identify potential V-domains.
 """
 
-# Import necessary libraries
 from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
@@ -14,7 +13,7 @@ import os
 import argparse
 import logging
 import subprocess
-
+import sys
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -47,12 +46,17 @@ def parse_args():
                         help="Logging level (debug, info, warning, error, critical). Default: info.")
     return parser.parse_args()
 
+relative_pos = [
+    "v_sequence_start", "v_sequence_end", "d_sequence_start", "d_sequence_end", 
+    "j_sequence_start", "j_sequence_end", "cdr1_start", "cdr1_end", "cdr2_start", 
+    "cdr2_end", "cdr3_start", "cdr3_end", "fwr1_start", "fwr1_end", "fwr2_start", 
+    "fwr2_end", "fwr3_start", "fwr3_end", "fwr4_start", "fwr4_end"
+]
 
-# List of relative positions in the sequence
-relative_pos = ["v_sequence_start", "v_sequence_end", "d_sequence_start", "d_sequence_end", 
-                "j_sequence_start", "j_sequence_end", "cdr1_start", "cdr1_end", "cdr2_start", 
-                "cdr2_end", "cdr3_start", "cdr3_end", "fwr1_start", "fwr1_end", "fwr2_start", 
-                "fwr2_end", "fwr3_start", "fwr3_end", "fwr4_start", "fwr4_end"]
+def check_file_exists(filepath, description):
+    if not os.path.isfile(filepath):
+        logging.error(f"{description} file '{filepath}' does not exist.")
+        sys.exit(1)
 
 def run_igblast(germlineV, germlineD, germlineJ, organism, igseqtype, threads, domain, auxiliary, queryfile, outfile):
     """
@@ -67,8 +71,15 @@ def run_igblast(germlineV, germlineD, germlineJ, organism, igseqtype, threads, d
         '-extend_align5end', '-extend_align3end', '-auxiliary_data', auxiliary, 
         '-query', queryfile, '-out', outfile
     ]
-    output = subprocess.check_output(command, universal_newlines=True)
-    return output
+    try:
+        logging.info(f"Running IgBLAST: {' '.join(command)}")
+        subprocess.check_output(command, universal_newlines=True, stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError as e:
+        logging.error(f"IgBLAST failed with exit code {e.returncode}: {e.output}")
+        sys.exit(1)
+    except FileNotFoundError:
+        logging.error("igblastn executable not found in PATH. Please ensure IgBLAST is installed and accessible.")
+        sys.exit(1)
 
 def igtable(input):
     """
@@ -80,13 +91,23 @@ def igtable(input):
     Returns:
         pd.DataFrame: Formatted IgBLAST output.
     """
-    blast = pd.read_csv(input, sep='\t', header=0)
+    try:
+        blast = pd.read_csv(input, sep='\t', header=0)
+    except FileNotFoundError:
+        logging.error(f"IgBLAST output file '{input}' not found.")
+        sys.exit(1)
+    except pd.errors.EmptyDataError:
+        logging.error(f"IgBLAST output file '{input}' is empty or corrupt.")
+        sys.exit(1)
+    except Exception as e:
+        logging.error(f"Error reading IgBLAST output file '{input}': {e}")
+        sys.exit(1)
+
     blast['sequence'] = blast['sequence'].astype(str)
     if not blast["sequence_id"].str.contains(r'\|').any():
         blast["sequence_id"] = blast.apply(lambda row: row["sequence_id"] + "|0:" + str(len(row["sequence"])), axis=1)
         blast["origin"] = "uncut"
     return blast
-
 
 def blastfilt(blast, escore, output2):
     """
@@ -100,37 +121,57 @@ def blastfilt(blast, escore, output2):
     Returns:
         pd.DataFrame: Filtered IgBLAST output.
     """
-    filtered_blast = blast[(blast["v_support"] < float(escore)) & (blast["j_support"] < float(escore))].copy()
-    filtered_blast["short"] = filtered_blast["sequence_id"].str.split('|').str[0]
-    filtered_blast["coord"] = filtered_blast["sequence_id"].str.split('|').str[1].str.split(':').str[0]
-    filtered_blast.reset_index(drop=True, inplace=True)
-    filtered_blast.to_csv(output2, sep="\t")
+    try:
+        filtered_blast = blast[(blast["v_support"] < float(escore)) & (blast["j_support"] < float(escore))].copy()
+        filtered_blast["short"] = filtered_blast["sequence_id"].str.split('|').str[0]
+        filtered_blast["coord"] = filtered_blast["sequence_id"].str.split('|').str[1].str.split(':').str[0]
+        filtered_blast.reset_index(drop=True, inplace=True)
+        filtered_blast.to_csv(output2, sep="\t")
+    except KeyError as e:
+        logging.error(f"Missing expected column in IgBLAST output: {e}")
+        sys.exit(1)
+    except Exception as e:
+        logging.error(f"Error filtering IgBLAST output: {e}")
+        sys.exit(1)
     return(filtered_blast) 
 
 def scan5p(filtered_blast, minlen): 
     """
     Scan the 5' end for sufficient sequence length. Returns sequences meeting length requirement on 5' end.
     """
-    seq5p = filtered_blast[filtered_blast["v_sequence_start"] > int(minlen)].copy()
-    if not seq5p.empty: 
-        seq5p["sequence_id"] = seq5p.apply(lambda row: row["short"] + "|" + str(row["coord"]) + ":" + str(round(row["v_sequence_start"])), axis=1)  
-        seq5p["sequence"] = seq5p.apply(lambda row: row["sequence"][:int(row["v_sequence_start"])], axis=1)
-    else: 
-        seq5p = pd.DataFrame()
+    try:
+        seq5p = filtered_blast[filtered_blast["v_sequence_start"] > int(minlen)].copy()
+        if not seq5p.empty: 
+            seq5p["sequence_id"] = seq5p.apply(lambda row: row["short"] + "|" + str(row["coord"]) + ":" + str(round(row["v_sequence_start"])), axis=1)  
+            seq5p["sequence"] = seq5p.apply(lambda row: row["sequence"][:int(row["v_sequence_start"])], axis=1)
+        else: 
+            seq5p = pd.DataFrame()
+    except KeyError as e:
+        logging.error(f"Missing expected column in filtered IgBLAST output: {e}")
+        sys.exit(1)
+    except Exception as e:
+        logging.error(f"Error scanning 5' end: {e}")
+        sys.exit(1)
     return seq5p
 
 def scan3p(filtered_blast, minlen): 
     """
     Scan the 3' end for sufficient sequence length. Returns sequences meeting length requirement on 3' end.
     """
-    seq3p = filtered_blast[(filtered_blast["sequence"].str.len() - filtered_blast["j_sequence_end"]) > int(minlen)].copy()
-    if not seq3p.empty: 
-        seq3p["sequence_id"] = seq3p.apply(lambda row: row["short"] + "|" + str(round(int(row["j_sequence_end"]) + int(row["coord"]))) + ":" + str(len(row["sequence"])+ int(row["coord"])), axis=1)
-        seq3p["sequence"] = seq3p.apply(lambda row: row["sequence"][(int(row["j_sequence_end"])-1):], axis=1)
-    else: 
-        seq3p = pd.DataFrame()
+    try:
+        seq3p = filtered_blast[(filtered_blast["sequence"].str.len() - filtered_blast["j_sequence_end"]) > int(minlen)].copy()
+        if not seq3p.empty: 
+            seq3p["sequence_id"] = seq3p.apply(lambda row: row["short"] + "|" + str(round(int(row["j_sequence_end"]) + int(row["coord"]))) + ":" + str(len(row["sequence"])+ int(row["coord"])), axis=1)
+            seq3p["sequence"] = seq3p.apply(lambda row: row["sequence"][(int(row["j_sequence_end"])-1):], axis=1)
+        else: 
+            seq3p = pd.DataFrame()
+    except KeyError as e:
+        logging.error(f"Missing expected column in filtered IgBLAST output: {e}")
+        sys.exit(1)
+    except Exception as e:
+        logging.error(f"Error scanning 3' end: {e}")
+        sys.exit(1)
     return seq3p 
-
 
 def vscan(filtered_blast, minlen):  
     """
@@ -165,14 +206,18 @@ def df_to_fasta(newset):
     Returns:
         list: List of SeqRecord objects.
     """
-    if not newset.empty: 
-        newset.reset_index(drop=True, inplace=True)
-        newsetlist = list(newset.itertuples(index=False, name=None))
-        newfasta = []
-        for i in newsetlist:
-            newfasta.append(SeqRecord(Seq(i[1]), id=i[0], name="", description=""))
-    else: 
-        newfasta = []
+    try:
+        if not newset.empty: 
+            newset.reset_index(drop=True, inplace=True)
+            newsetlist = list(newset.itertuples(index=False, name=None))
+            newfasta = []
+            for i in newsetlist:
+                newfasta.append(SeqRecord(Seq(i[1]), id=i[0], name="", description=""))
+        else: 
+            newfasta = []
+    except Exception as e:
+        logging.error(f"Error converting DataFrame to FASTA format: {e}")
+        sys.exit(1)
     return newfasta
 
 def splitfasta(input, minlen, escore, output1, output2):
@@ -192,8 +237,11 @@ def splitfasta(input, minlen, escore, output1, output2):
     df = igtable(input)
     filt_df = blastfilt(df, escore, output2)
     vscan_df = vscan(filt_df, minlen)
-    SeqIO.write(df_to_fasta(vscan_df), output1, "fasta")
-
+    try:
+        SeqIO.write(df_to_fasta(vscan_df), output1, "fasta")
+    except Exception as e:
+        logging.error(f"Error writing FASTA file '{output1}': {e}")
+        sys.exit(1)
 
 def rescanner(germlineV, germlineD, germlineJ, organism, igseqtype, threads, domain, auxiliary, queryfile, minlen, escore): 
     """
@@ -201,16 +249,25 @@ def rescanner(germlineV, germlineD, germlineJ, organism, igseqtype, threads, dom
     """    
     counter = 0 
     res = []
-    while (os.stat(queryfile).st_size != 0):
+    while True:
+        try:
+            if not os.path.isfile(queryfile):
+                logging.info(f"Query file '{queryfile}' does not exist. Stopping iteration.")
+                break
+            if os.stat(queryfile).st_size == 0:
+                logging.info(f"Query file '{queryfile}' is empty. Stopping iteration.")
+                break
+        except Exception as e:
+            logging.error(f"Error checking query file '{queryfile}': {e}")
+            sys.exit(1)
         counter +=1
-        igblasttsv = "ddDNA_igblast_" + str(counter) + ".tsv" 
+        igblasttsv = f"ddDNA_igblast_{counter}.tsv"
         run_igblast(germlineV, germlineD, germlineJ, organism, igseqtype, threads, domain, auxiliary, queryfile, igblasttsv)
-        splitfastatsv = "ddDNA_splitfasta_" + str(counter) + ".tsv"
-        queryfile = "ddDNA_splitfasta_" + str(counter) + ".fasta"
+        splitfastatsv = f"ddDNA_splitfasta_{counter}.tsv"
+        queryfile = f"ddDNA_splitfasta_{counter}.fasta"
         splitfasta(igblasttsv, minlen, escore, queryfile, splitfastatsv) 
         res.append(splitfastatsv)
     return res
-
 
 def gatherdf(result, changepos): 
     """
@@ -224,33 +281,48 @@ def gatherdf(result, changepos):
         pd.DataFrame: Combined and adjusted results.
     """    
     dfs = []
-    # read and concat all dfs
     for i in result: 
-        df = pd.read_csv(i, sep='\t', header = 0, index_col = 0)
+        try:
+            df = pd.read_csv(i, sep='\t', header=0, index_col=0)
+        except FileNotFoundError:
+            logging.error(f"Filtered result file '{i}' not found.")
+            sys.exit(1)
+        except Exception as e:
+            logging.error(f"Error loading filtered result file '{i}': {e}")
+            sys.exit(1)
         dfs.append(df)
-    result_df = pd.concat(dfs, ignore_index=True)
-    # make sure all coordinates in the final table are relative to the OG seq
-    for j in changepos: 
-        result_df.loc[result_df[j].notna(), j] += result_df.loc[result_df[j].notna(), "coord"]
-    # sequence field represents the full length sequence
-    fullseq = result_df.groupby("short").filter(lambda x: any(x['origin'] == 'uncut'))
-    uncut_mapping = (
-        fullseq.loc[fullseq['origin'] == 'uncut']
-        .set_index('short')
-        ['sequence']
-        .to_dict()
-    )
-    result_df.loc[(result_df['origin'] != 'uncut') & (result_df['short'].isin(uncut_mapping)), 'sequence'] = (
-        result_df['short'].map(uncut_mapping)
-    )
-    # remove coordinate data (original position now taken into account in table)
-    result_df = result_df.drop(columns = ["sequence_id", "coord", "origin"])
-    newcol = result_df.pop("short")
-    result_df.insert(0, "sequence_id", newcol)
-    result_df.to_csv("igBLAST.tsv", sep="\t")
-    return(result_df)
+    try:
+        result_df = pd.concat(dfs, ignore_index=True)
+        for j in changepos: 
+            result_df.loc[result_df[j].notna(), j] += result_df.loc[result_df[j].notna(), "coord"]
+        # sequence field represents the full length sequence
+        fullseq = result_df.groupby("short").filter(lambda x: any(x['origin'] == 'uncut'))
+        uncut_mapping = (
+            fullseq.loc[fullseq['origin'] == 'uncut']
+            .set_index('short')
+            ['sequence']
+            .to_dict()
+        )
+        result_df.loc[(result_df['origin'] != 'uncut') & (result_df['short'].isin(uncut_mapping)), 'sequence'] = (
+            result_df['short'].map(uncut_mapping)
+        )
+        # remove coordinate data (original position now taken into account in table)
+        result_df = result_df.drop(columns=["sequence_id", "coord", "origin"])
+        newcol = result_df.pop("short")
+        result_df.insert(0, "sequence_id", newcol)
+        result_df.to_csv("igBLAST.tsv", sep="\t")
+    except Exception as e:
+        logging.error(f"Error during DataFrame merge and coordinate adjustment: {e}")
+        sys.exit(1)
+    return result_df
 
 def main(args, relative_pos): 
+    # Check required files before starting
+    check_file_exists(args.query, "Query")
+    check_file_exists(args.dbv, "V germline database")
+    check_file_exists(args.dbd, "D germline database")
+    check_file_exists(args.dbj, "J germline database")
+    check_file_exists(args.auxdata, "Auxiliary data")
     res = rescanner(args.dbv, args.dbd, args.dbj, args.organism, args.igtype, args.nthreads, args.domainsys, args.auxdata, args.query, args.minlen, args.escore)
     finaldf = gatherdf(res, relative_pos)    
 
