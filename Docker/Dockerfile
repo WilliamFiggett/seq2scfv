@@ -1,7 +1,7 @@
 # building in ubuntu 20.04
 #FROM ubuntu@sha256:b795f8e0caaaacad9859a9a38fe1c78154f8301fdaf0872eaf1520d66d9c0b98 AS builder
 
-# Updated base image:
+# Updated base image to fix compatability with R packages:
 FROM rocker/tidyverse:latest
 
 SHELL ["/bin/bash", "-c"]
@@ -63,7 +63,8 @@ COPY install2.r /usr/bin/install2.r
 RUN chmod +x /usr/bin/install2.r
 
 RUN mkdir /home/seq2scfv
-RUN git clone https://github.com/ngs-ai-org/seq2scfv.git /home/seq2scfv
+# Use this forked repository to include script corrections
+RUN git clone https://github.com/WilliamFiggett/seq2scfv.git /home/seq2scfv
 RUN cp /home/seq2scfv/bin/* /usr/local/bin/
 RUN chmod +x /usr/local/bin/*
 
