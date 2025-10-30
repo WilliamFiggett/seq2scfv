@@ -11,63 +11,41 @@ from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 import pandas as pd 
 import os
-from optparse import OptionParser
+import argparse
 import logging
 import subprocess
 
 
-# Parse input arguments
-usage = "usage: %prog [options]"
-parser = OptionParser(usage=usage)
-parser.add_option("--query", dest="query", default=None, type="string", action="store", help="Input file name for DNA sequences in fasta format.")
-parser.add_option("--germline_V", dest="dbv", default=None, type="string", action="store",help="Germline database name for V gene.")
-parser.add_option("--germline_D", dest="dbd", default=None, type="string", action="store",help="Germline database name for D gene.")
-parser.add_option("--germline_J", dest="dbj", default=None, type="string", action="store",help="Germline database name for J gene.")
-parser.add_option("--organism", dest="organism", default=None, type="string", action="store", help="Organism of the query sequence: 'human', 'mouse', 'rat', 'rabbit' or 'custom' (see IgBLAST web site).")
-parser.add_option("--ig_seqtype", dest="igtype", default="Ig", type="string", action="store", help="Receptor sequence type: 'Ig' or 'TCR'.")
-parser.add_option("--domain_system", dest="domainsys", default="imgt", type="string", action="store", help="Domain system to be used for segment annotation: 'imgt' or 'kabat'.")
-parser.add_option("--auxiliary_data", dest="auxdata", default=None, type="string", action="store", help="File containing the coding frame start positions for sequences in germline J database.")
-parser.add_option("--num_threads", dest="nthreads", default=1, type=int, action="store", help="Number of threads (CPUs) to use in the BLAST search. Default: 1.")
-parser.add_option("--minlen", dest="minlen", default=150, type=int, action="store",help="Minimum length (bp) required to continue seraching for a V-domain. Default: 150 bp.")
-parser.add_option("--escore", dest="escore", default=1.0e-02, type=float, action="store",help="Minimum V and J alignment support (E, expectation value) to consider a hit fully characterizing a V-(D)-J region. Default: 0.01.")
-parser.add_option("--log", dest="loglevel", type="string", default="info")
-
-(options, args) = parser.parse_args()
-
-input = options.query
-germlv = options.dbv
-germld = options.dbd
-germlj = options.dbj
-org = options.organism
-ig = options.igtype
-domain = options.domainsys
-auxdata = options.auxdata
-nthreads = options.nthreads
-minlen = options.minlen
-escore = options.escore
-loglevel = options.loglevel
-
-# Set logging level
-numeric_level = getattr(logging, loglevel.upper(), None)
-if not isinstance(numeric_level, int):    
-    raise ValueError('Invalid log level: %s' % loglevel)
-logging.basicConfig(level=numeric_level)
-
-logging.debug(options)
-
-# Validate essential options
-if input is None:
-    raise RuntimeError("Error! no query file provided (--query)")
-if germlv is None:
-    raise RuntimeError("Error! no germline database for V genes provided (--germline_V)")
-if germld is None:
-    raise RuntimeError("Error! no germline database for D genes provided (--germline_D)")
-if germlj is None:
-    raise RuntimeError("Error! no germline database for J genes provided (--germline_J)")
-if org is None:
-    raise RuntimeError("Error! no organism specified (--organism)")
-if auxdata is None:
-    raise RuntimeError("Error! no auxiliary file provided (--auxiliary_data)")
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Iterative IgBLAST analysis on DNA sequences to identify V-domains."
+    )
+    parser.add_argument("--query", required=True, type=str,
+                        help="Input file name for DNA sequences in fasta format.")
+    parser.add_argument("--germline_V", dest="dbv", required=True, type=str,
+                        help="Germline database name for V gene.")
+    parser.add_argument("--germline_D", dest="dbd", required=True, type=str,
+                        help="Germline database name for D gene.")
+    parser.add_argument("--germline_J", dest="dbj", required=True, type=str,
+                        help="Germline database name for J gene.")
+    parser.add_argument("--organism", required=True, type=str,
+                        help="Organism of the query sequence: 'human', 'mouse', 'rat', 'rabbit' or 'custom' (see IgBLAST web site).")
+    parser.add_argument("--ig_seqtype", dest="igtype", default="Ig", type=str,
+                        help="Receptor sequence type: 'Ig' or 'TCR'.")
+    parser.add_argument("--domain_system", dest="domainsys", default="imgt", type=str,
+                        help="Domain system to be used for segment annotation: 'imgt' or 'kabat'.")
+    parser.add_argument("--auxiliary_data", dest="auxdata", required=True, type=str,
+                        help="File containing the coding frame start positions for sequences in germline J database.")
+    parser.add_argument("--num_threads", dest="nthreads", default=1, type=int,
+                        help="Number of threads (CPUs) to use in the BLAST search. Default: 1.")
+    parser.add_argument("--minlen", default=150, type=int,
+                        help="Minimum length (bp) required to continue searching for a V-domain. Default: 150 bp.")
+    parser.add_argument("--escore", default=1.0e-02, type=float,
+                        help="Minimum V and J alignment support (E, expectation value) to consider a hit fully characterizing a V-(D)-J.")
+    parser.add_argument("--log", dest="loglevel", default="info", type=str,
+                        choices=["debug", "info", "warning", "error", "critical"],
+                        help="Logging level (debug, info, warning, error, critical). Default: info.")
+    return parser.parse_args()
 
 
 # List of relative positions in the sequence
@@ -272,10 +250,15 @@ def gatherdf(result, changepos):
     result_df.to_csv("igBLAST.tsv", sep="\t")
     return(result_df)
 
-def main(germlineV, germlineD, germlineJ, organism, igseqtype, threads, domain, auxiliary, queryfile, minlen, escore, relative_pos): 
-    res = rescanner(germlv, germld, germlj, org, ig, nthreads, domain, auxdata, input, minlen, escore)
+def main(args, relative_pos): 
+    res = rescanner(args.dbv, args.dbd, args.dbj, args.organism, args.igtype, args.nthreads, args.domainsys, args.auxdata, args.query, args.minlen, args.escore)
     finaldf = gatherdf(res, relative_pos)    
 
-
 if __name__ == '__main__':
-    main(germlv, germld, germlj, org, ig, nthreads, domain, auxdata, input, minlen, escore, relative_pos)
+    args = parse_args()
+    numeric_level = getattr(logging, args.loglevel.upper(), None)
+    if not isinstance(numeric_level, int):    
+        raise ValueError('Invalid log level: %s' % args.loglevel)
+    logging.basicConfig(level=numeric_level)
+    logging.debug(args)
+    main(args, relative_pos)
