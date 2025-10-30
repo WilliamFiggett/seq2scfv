@@ -1,4 +1,8 @@
-# Seq2scFv
+# seq2scFv
+
+> **Note:**  
+> This repository is a fork of [ngs-ai-org/seq2scfv](https://github.com/ngs-ai-org/seq2scfv).
+> For fork-specific changes and instructions, see [README_FORK.md](./README_FORK.md).
 
 ## Table of Contents
 
