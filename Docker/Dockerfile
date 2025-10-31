@@ -63,8 +63,8 @@ COPY install2.r /usr/bin/install2.r
 RUN chmod +x /usr/bin/install2.r
 
 RUN mkdir /home/seq2scfv
-# Use this forked repository to include script corrections
-RUN git clone https://github.com/WilliamFiggett/seq2scfv.git /home/seq2scfv
+# Use this forked repository (dev branch) to include script corrections
+RUN git clone -b dev https://github.com/WilliamFiggett/seq2scfv.git /home/seq2scfv
 RUN cp /home/seq2scfv/bin/* /usr/local/bin/
 RUN chmod +x /usr/local/bin/*
 
