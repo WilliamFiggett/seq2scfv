@@ -85,7 +85,10 @@ def annotator(paired_V):
         "aa_linker_start",
         "aa_linker_end"
     ])
-    paired_V[result_df.columns] = result_df
+    # Fix: ensure row correspondence before assignment
+    if len(result_df) != len(paired_V):
+        raise ValueError(f"Row count mismatch: paired_V={len(paired_V)}, result_df={len(result_df)}")
+    paired_V = pd.concat([paired_V.reset_index(drop=True), result_df.reset_index(drop=True)], axis=1)
     logging.debug(f"Shape of scFv table after annotations: {paired_V.shape}")
     return paired_V
 
@@ -120,20 +123,18 @@ def number_df(df):
     logger.info('Numbering aa with anpack')
     with mp.Pool(mp.cpu_count()) as pool:
         logging.info('Running MP row annotations')
-        df[['VH_numbering', 
-            'VH_percent_identity', 
-            'VH_chain_type', 
-            'VH_err_message']]  = pool.map(
-                number_seq, 
-                df['VH_sequence_alignment_aa'])
+        vh_results = pool.map(number_seq, df['VH_sequence_alignment_aa'])
+    vh_result_df = pd.DataFrame(vh_results)
+    if len(vh_result_df) != len(df):
+        raise ValueError(f"Row count mismatch in VH numbering: df={len(df)}, vh_result_df={len(vh_result_df)}")
+    df = pd.concat([df.reset_index(drop=True), vh_result_df.reset_index(drop=True)], axis=1)
     with mp.Pool(mp.cpu_count()) as pool:
         logging.info('Running MP row annotations')
-        df[['VL_numbering', 
-            'VL_percent_identity', 
-            'VL_chain_type', 
-            'VL_err_message']]  = pool.map(
-                number_seq, 
-                df['VL_sequence_alignment_aa'])
+        vl_results = pool.map(number_seq, df['VL_sequence_alignment_aa'])
+    vl_result_df = pd.DataFrame(vl_results)
+    if len(vl_result_df) != len(df):
+        raise ValueError(f"Row count mismatch in VL numbering: df={len(df)}, vl_result_df={len(vl_result_df)}")
+    df = pd.concat([df.reset_index(drop=True), vl_result_df.reset_index(drop=True)], axis=1)
     logging.debug(f'Shape of table after numbering: {df.shape}')
     return df
 
