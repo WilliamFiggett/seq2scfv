@@ -236,12 +236,12 @@ def main(input):
     # Get dataframe with sequences containing 1 VH & 1 VL; write "orphan" chains to tsv
     paired_V_regions = scFv_tools.select_V_pairs(df)
     # Keep only sequences without * in any of the chains 
-    no_stop_paired_V = paired_V_regions[~(paired_V_regions['VH_sequence_alignment_aa'].str.contains('\*') | paired_V_regions['VL_sequence_alignment_aa'].str.contains('\*'))]
+    no_stop_paired_V = paired_V_regions[~(paired_V_regions['VH_sequence_alignment_aa'].str.contains(r'\*') | paired_V_regions['VL_sequence_alignment_aa'].str.contains(r'\*'))]
     # Annotate scFv & linker at the nt and aa levels
     scFv_delimited = annotator(no_stop_paired_V)
     # Only sequences that are in frame are considered from here on
     # Filter out of frame if frame == NA or if linker contains * | some corner cases cannot be caught with annotator
-    scFv_in_frame = scFv_delimited[(scFv_delimited["frame"] != "NA") & (~scFv_delimited["aa_linker"].str.contains('\*'))]
+    scFv_in_frame = scFv_delimited[(scFv_delimited["frame"] != "NA") & (~scFv_delimited["aa_linker"].str.contains(r'\*'))]
     # Delimit FWR / CDR regions at the aa level, relative to each chain
     region_aa = scFv_tools.set_aa_boundaries(scFv_in_frame.dropna(subset = aa_chain_regions, how = 'any')) 
     scFv_in_frame_aa_pos = scFv_in_frame.merge(region_aa, how = 'left', on = 'sequence_id')
@@ -263,8 +263,8 @@ def main(input):
     scFv_numbered[(scFv_numbered['VH_err_message'] == 'Invalid sequence supplied -- nonstandard AAs') |
                   (scFv_numbered['VL_err_message'] == 'Invalid sequence supplied -- nonstandard AAs')].to_csv('in_frame_igBLAST_delim_nonstandard_aas.tsv', sep='\t', index=False)
     df_consistent_nt_coord.to_csv("in_frame_igBLAST_paired_delim.tsv", sep="\t")    
-    out_of_frame1 = paired_V_regions[(paired_V_regions['VH_sequence_alignment_aa'].str.contains('\*') | paired_V_regions['VL_sequence_alignment_aa'].str.contains('\*'))]
-    out_of_frame2 = scFv_delimited[(scFv_delimited["frame"] == "NA") | (scFv_delimited["aa_linker"].str.contains('\*'))]
+    out_of_frame1 = paired_V_regions[(paired_V_regions['VH_sequence_alignment_aa'].str.contains(r'\*') | paired_V_regions['VL_sequence_alignment_aa'].str.contains(r'\*'))]
+    out_of_frame2 = scFv_delimited[(scFv_delimited["frame"] == "NA") | (scFv_delimited["aa_linker"].str.contains(r'\*'))]
     pd.concat([out_of_frame1, out_of_frame2], ignore_index=True, sort=False).to_csv('out_of_frame_igBLAST_paired_delim.tsv', sep='\t', index=False)
     
 if __name__ == '__main__':
