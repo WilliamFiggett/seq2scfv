@@ -60,32 +60,37 @@ def annotator(paired_V):
     logging.debug(f"Shape of scFv table after linkers: {paired_V.shape}")
     with mp.Pool(mp.cpu_count()) as pool:
         logging.info("Running MP row annotations")
-        paired_V[[ 
-            "nt_scFv_id",
-            "nt_scFv",
-            "nt_scFv_start",
-            "nt_scFv_end",
-            "nt_linker",
-            "nt_linker_start",
-            "nt_linker_end",
-            "nt_VH", 
-            "nt_VL",
-            "aa_sequence",
-            "frame",
-            "aa_scFv_id",
-            "aa_scFv",
-            "aa_scFv_start",
-            "aa_scFv_end",
-            "aa_linker",
-            "aa_linker_start",
-            "aa_linker_end"
-        ]] = pool.map(
-            scFv_tools.annotate_row, # scFv_tools.annotate_row
+        result = pool.map(
+            scFv_tools.annotate_row,
             paired_V[[
                 "sequence",
                 "VH_sequence_alignment_aa",
                 "VL_sequence_alignment_aa",
-            ]].itertuples(index=False, name=None))
+            ]].itertuples(index=False, name=None)
+        )
+    # Build a DataFrame from the results, matching expected column names
+    result_df = pd.DataFrame(result, columns=[
+        "nt_scFv_id",
+        "nt_scFv",
+        "nt_scFv_start",
+        "nt_scFv_end",
+        "nt_linker",
+        "nt_linker_start",
+        "nt_linker_end",
+        "nt_VH", 
+        "nt_VL",
+        "aa_sequence",
+        "frame",
+        "aa_scFv_id",
+        "aa_scFv",
+        "aa_scFv_start",
+        "aa_scFv_end",
+        "aa_linker",
+        "aa_linker_start",
+        "aa_linker_end"
+    ])
+    # Assign these columns
+    paired_V[result_df.columns] = result_df
     logging.debug(f"Shape of scFv table after annotations: {paired_V.shape}")
     return paired_V
 
