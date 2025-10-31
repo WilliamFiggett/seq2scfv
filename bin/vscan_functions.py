@@ -291,10 +291,16 @@ def gatherdf(result, changepos):
             logging.error(f"Error loading filtered result file '{i}': {e}")
             sys.exit(1)
         dfs.append(df)
+    # Exclude empty DataFrames before concatenation (fix for FutureWarning)
+    dfs = [df for df in dfs if not df.empty]
     try:
         result_df = pd.concat(dfs, ignore_index=True)
-        for j in changepos: 
-            result_df.loc[result_df[j].notna(), j] += result_df.loc[result_df[j].notna(), "coord"]
+        # Cast columns to numeric before addition (fix for FutureWarning)
+        for j in changepos:
+            if j in result_df.columns and "coord" in result_df.columns:
+                idx = result_df[j].notna() & result_df["coord"].notna()
+                # Convert to float before addition
+                result_df.loc[idx, j] = result_df.loc[idx, j].astype(float) + result_df.loc[idx, "coord"].astype(float)
         # sequence field represents the full length sequence
         fullseq = result_df.groupby("short").filter(lambda x: any(x['origin'] == 'uncut'))
         uncut_mapping = (
