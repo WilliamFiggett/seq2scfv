@@ -6,7 +6,7 @@ scFv identification and characterization.
 
 import logging
 import multiprocessing as mp
-from optparse import OptionParser
+import argparse
 from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
@@ -17,18 +17,22 @@ import re
 
 logger = logging.getLogger(__name__)
 
-# Parse input arguments
-usage = "usage: %prog [options]"
-parser = OptionParser(usage=usage)
-parser.add_option("--igBLAST-hits", dest="hits", default=None, type="string", action="store", help="Pre-filtered IG hits stemming from V-scan.")
-parser.add_option("--domain-type", dest="domain", default=None, type="string", action="store", help="Domain system to be used for segment annotation: 'imgt' or 'kabat'")
-parser.add_option("--log", dest="loglevel", type="string", default="info")
+# Parse input arguments using argparse
+def parse_args():
+    parser = argparse.ArgumentParser(description="scFv identification and characterization.")
+    parser.add_argument("--igBLAST-hits", dest="hits", required=True, type=str,
+                        help="Pre-filtered IG hits stemming from V-scan.")
+    parser.add_argument("--domain-type", dest="domain", required=True, type=str, choices=["imgt", "kabat"],
+                        help="Domain system to be used for segment annotation: 'imgt' or 'kabat'.")
+    parser.add_argument("--log", dest="loglevel", type=str, default="info",
+                        choices=["debug", "info", "warning", "error", "critical"],
+                        help="Logging level.")
+    return parser.parse_args()
 
-(options, args) = parser.parse_args()
-
-input = options.hits
-domain = options.domain
-loglevel = options.loglevel
+args = parse_args()
+input = args.hits
+domain = args.domain
+loglevel = args.loglevel
 
 # Set logging level
 numeric_level = getattr(logging, loglevel.upper(), None)
@@ -36,13 +40,7 @@ if not isinstance(numeric_level, int):
     raise ValueError('Invalid log level: %s' % loglevel)
 logging.basicConfig(level=numeric_level)
 
-logging.debug(options)
-
-# Validate essential options
-if input is None:
-    raise RuntimeError("Error! no IgBLAST result file given to process (--query)")
-if domain is None:
-    raise RuntimeError("Error! no domain system specified (--domain-type)")
+logging.debug(vars(args))
 
 # compile all information in df
 def annotator(paired_V):
@@ -56,7 +54,6 @@ def annotator(paired_V):
     pd.DataFrame: Updated DataFrame with scFv and linker sequences annotated.
     """
     logging.info("Adding scFv and linker sequences")
-    # filter out sequences with stops 
     logging.debug(f"Shape of scFv table after linkers: {paired_V.shape}")
     with mp.Pool(mp.cpu_count()) as pool:
         logging.info("Running MP row annotations")
@@ -68,7 +65,6 @@ def annotator(paired_V):
                 "VL_sequence_alignment_aa",
             ]].itertuples(index=False, name=None)
         )
-    # Build a DataFrame from the results, matching expected column names
     result_df = pd.DataFrame(result, columns=[
         "nt_scFv_id",
         "nt_scFv",
@@ -89,12 +85,10 @@ def annotator(paired_V):
         "aa_linker_start",
         "aa_linker_end"
     ])
-    # Assign these columns
     paired_V[result_df.columns] = result_df
     logging.debug(f"Shape of scFv table after annotations: {paired_V.shape}")
     return paired_V
 
-# Use Antpack to number chains
 def number_seq(aa):
     """
     Numbers amino acid sequences using the Antpack annotator.
@@ -143,7 +137,6 @@ def number_df(df):
     logging.debug(f'Shape of table after numbering: {df.shape}')
     return df
 
-# write subsequences to csv
 def subSeq(
     annot_vhvl: pd.DataFrame
 ) -> None:
@@ -177,7 +170,6 @@ def subSeq(
     ]
     ntscfv, aascfv, ntlinker, aalinker = {}, {}, [], []
     for row in df.itertuples(index=False):
-        # deduped at scFv nt level
         if not row.nt_scFv_id in ntscfv:
             ntscfv[row.nt_scFv_id] = SeqRecord(
                 seq=Seq(row.nt_scFv),
@@ -196,7 +188,6 @@ def subSeq(
                 )
         else:
             ntscfv[row.nt_scFv_id].description += f";{row.sequence_id}"
-        # deduped at scFv aa level
         if not row.aa_scFv_id in aascfv:
             aascfv[row.aa_scFv_id] = SeqRecord(
                 seq=Seq(row.aa_scFv),
@@ -220,14 +211,9 @@ def subSeq(
     SeqIO.write(ntlinker, "nt_inferred_linkers.fasta", "fasta")
     SeqIO.write(aalinker, "aa_inferred_linkers.fasta", "fasta")
 
-
-
-# Prep the antibody annotator
 numbering_annotator = SingleChainAnnotator(['H', 'K', 'L'], scheme = domain)
-# Prep aa regions
 aa_chain_regions = ['VH_fwr1_aa', 'VH_cdr1_aa', 'VH_fwr2_aa', 'VH_cdr2_aa', 'VH_fwr3_aa', 'VH_cdr3_aa', 'VH_fwr4_aa', 
                     'VL_fwr1_aa', 'VL_cdr1_aa', 'VL_fwr2_aa', 'VL_cdr2_aa', 'VL_fwr3_aa', 'VL_cdr3_aa', 'VL_fwr4_aa']
-
 
 def main(input):
     """
@@ -236,35 +222,20 @@ def main(input):
     Args:
     input (str): Path to the input igBLAST file.
     """
-    # Read input
     df = scFv_tools.igBLAST_to_df(input)
-    # Get dataframe with sequences containing 1 VH & 1 VL; write "orphan" chains to tsv
     paired_V_regions = scFv_tools.select_V_pairs(df)
-    # Keep only sequences without * in any of the chains 
     no_stop_paired_V = paired_V_regions[~(paired_V_regions['VH_sequence_alignment_aa'].str.contains(r'\*') | paired_V_regions['VL_sequence_alignment_aa'].str.contains(r'\*'))]
-    # Annotate scFv & linker at the nt and aa levels
     scFv_delimited = annotator(no_stop_paired_V)
-    # Only sequences that are in frame are considered from here on
-    # Filter out of frame if frame == NA or if linker contains * | some corner cases cannot be caught with annotator
     scFv_in_frame = scFv_delimited[(scFv_delimited["frame"] != "NA") & (~scFv_delimited["aa_linker"].str.contains(r'\*'))]
-    # Delimit FWR / CDR regions at the aa level, relative to each chain
     region_aa = scFv_tools.set_aa_boundaries(scFv_in_frame.dropna(subset = aa_chain_regions, how = 'any')) 
     scFv_in_frame_aa_pos = scFv_in_frame.merge(region_aa, how = 'left', on = 'sequence_id')
-    # Run numbering with Antpack
     scFv_numbered = number_df(scFv_in_frame_aa_pos)
-    # Compare IgBlast annotation vs Antpack numbering
-    # 4 columns are created: VH & VL length and start position consistency between alignment / numbering
-    # T / F annotation, with possibility of "Inferred incomplete sequencing of chain" for VH_start_consistency
     df_consistent = scFv_tools.eval_consistency(scFv_numbered[(scFv_numbered['VH_err_message'] != 'Invalid sequence supplied -- nonstandard AAs') |
                                                    (scFv_numbered['VL_err_message'] != 'Invalid sequence supplied -- nonstandard AAs')])
-    # Update CDR / FWR region start / end at the nt level to be relative to the chain (not the read)
     df_consistent_nt_coord = df_consistent.apply(scFv_tools.update_coordinates, axis=1)
-    # Add information of numbering system
     df_consistent_nt_coord.rename(columns={'VH_numbering': str('VH_' + domain + '_numbering')}, inplace=True)
     df_consistent_nt_coord.rename(columns={'VL_numbering': str('VL_' + domain + '_numbering')}, inplace=True)
-    # Write fasta files 
     subSeq(df_consistent_nt_coord)
-    # Write tables 
     scFv_numbered[(scFv_numbered['VH_err_message'] == 'Invalid sequence supplied -- nonstandard AAs') |
                   (scFv_numbered['VL_err_message'] == 'Invalid sequence supplied -- nonstandard AAs')].to_csv('in_frame_igBLAST_delim_nonstandard_aas.tsv', sep='\t', index=False)
     df_consistent_nt_coord.to_csv("in_frame_igBLAST_paired_delim.tsv", sep="\t")    
