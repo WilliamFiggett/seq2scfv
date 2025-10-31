@@ -224,23 +224,41 @@ def main(input):
     """
     df = scFv_tools.igBLAST_to_df(input)
     paired_V_regions = scFv_tools.select_V_pairs(df)
-    no_stop_paired_V = paired_V_regions[~(paired_V_regions['VH_sequence_alignment_aa'].str.contains(r'\*') | paired_V_regions['VL_sequence_alignment_aa'].str.contains(r'\*'))]
+    no_stop_paired_V = paired_V_regions[~(
+        paired_V_regions['VH_sequence_alignment_aa'].str.contains(r'\*') |
+        paired_V_regions['VL_sequence_alignment_aa'].str.contains(r'\*')
+    )]
     scFv_delimited = annotator(no_stop_paired_V)
-    scFv_in_frame = scFv_delimited[(scFv_delimited["frame"] != "NA") & (~scFv_delimited["aa_linker"].str.contains(r'\*'))]
-    region_aa = scFv_tools.set_aa_boundaries(scFv_in_frame.dropna(subset = aa_chain_regions, how = 'any')) 
-    scFv_in_frame_aa_pos = scFv_in_frame.merge(region_aa, how = 'left', on = 'sequence_id')
+    scFv_in_frame = scFv_delimited[
+        (scFv_delimited["frame"] != "NA") &
+        (~scFv_delimited["aa_linker"].str.contains(r'\*'))
+    ]
+    region_aa = scFv_tools.set_aa_boundaries(scFv_in_frame.dropna(subset=aa_chain_regions, how='any')) 
+    scFv_in_frame_aa_pos = scFv_in_frame.merge(region_aa, how='left', on='sequence_id')
     scFv_numbered = number_df(scFv_in_frame_aa_pos)
-    df_consistent = scFv_tools.eval_consistency(scFv_numbered[(scFv_numbered['VH_err_message'] != 'Invalid sequence supplied -- nonstandard AAs') |
-                                                   (scFv_numbered['VL_err_message'] != 'Invalid sequence supplied -- nonstandard AAs')])
+    df_consistent = scFv_tools.eval_consistency(
+        scFv_numbered[
+            (scFv_numbered['VH_err_message'] != 'Invalid sequence supplied -- nonstandard AAs') |
+            (scFv_numbered['VL_err_message'] != 'Invalid sequence supplied -- nonstandard AAs')
+        ]
+    )
     df_consistent_nt_coord = df_consistent.apply(scFv_tools.update_coordinates, axis=1)
     df_consistent_nt_coord.rename(columns={'VH_numbering': str('VH_' + domain + '_numbering')}, inplace=True)
     df_consistent_nt_coord.rename(columns={'VL_numbering': str('VL_' + domain + '_numbering')}, inplace=True)
     subSeq(df_consistent_nt_coord)
-    scFv_numbered[(scFv_numbered['VH_err_message'] == 'Invalid sequence supplied -- nonstandard AAs') |
-                  (scFv_numbered['VL_err_message'] == 'Invalid sequence supplied -- nonstandard AAs')].to_csv('in_frame_igBLAST_delim_nonstandard_aas.tsv', sep='\t', index=False)
+    scFv_numbered[
+        (scFv_numbered['VH_err_message'] == 'Invalid sequence supplied -- nonstandard AAs') |
+        (scFv_numbered['VL_err_message'] == 'Invalid sequence supplied -- nonstandard AAs')
+    ].to_csv('in_frame_igBLAST_delim_nonstandard_aas.tsv', sep='\t', index=False)
     df_consistent_nt_coord.to_csv("in_frame_igBLAST_paired_delim.tsv", sep="\t")    
-    out_of_frame1 = paired_V_regions[(paired_V_regions['VH_sequence_alignment_aa'].str.contains(r'\*') | paired_V_regions['VL_sequence_alignment_aa'].str.contains(r'\*'))]
-    out_of_frame2 = scFv_delimited[(scFv_delimited["frame"] == "NA") | (scFv_delimited["aa_linker"].str.contains(r'\*'))]
+    out_of_frame1 = paired_V_regions[
+        paired_V_regions['VH_sequence_alignment_aa'].str.contains(r'\*') |
+        paired_V_regions['VL_sequence_alignment_aa'].str.contains(r'\*')
+    ]
+    out_of_frame2 = scFv_delimited[
+        (scFv_delimited["frame"] == "NA") |
+        (scFv_delimited["aa_linker"].str.contains(r'\*'))
+    ]
     pd.concat([out_of_frame1, out_of_frame2], ignore_index=True, sort=False).to_csv('out_of_frame_igBLAST_paired_delim.tsv', sep='\t', index=False)
     
 if __name__ == '__main__':
